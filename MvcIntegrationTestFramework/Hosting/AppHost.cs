@@ -34,6 +34,25 @@ namespace MvcIntegrationTestFramework.Hosting
             _appDomainProxy.RunBrowsingSessionInAppDomain(serializableDelegate);
         }
 
+        public TResult Start<TResult>(Func<BrowsingSession, TResult> testScript)
+        {
+            var serializableDelegate = new SerializableDelegate<Func<BrowsingSession, TResult>>(testScript);
+            FuncExecutionResult<TResult> result = _appDomainProxy.RunBrowsingSessionInAppDomain(serializableDelegate);
+            CopyFields<object>(result.DelegateCalled.Delegate.Target, testScript.Target);
+            return result.DelegateCallResult;
+        }
+
+        private static void CopyFields<T>(T from, T to) where T : class
+        {
+            if ((from != null) && (to != null))
+            {
+                foreach (FieldInfo info in from.GetType().GetFields())
+                {
+                    info.SetValue(to, info.GetValue(from));
+                }
+            }
+        }
+
         #region Initializing app & interceptors
         private static void InitializeApplication()
         {

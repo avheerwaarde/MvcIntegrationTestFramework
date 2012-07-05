@@ -15,9 +15,30 @@ namespace MvcIntegrationTestFramework.Browsing
         public HttpSessionState Session { get; private set; }
         public HttpCookieCollection Cookies { get; private set; }
 
-        public BrowsingSession()
+        private static BrowsingSession _instance;
+        private static object __lock = new object();
+
+        private BrowsingSession()
         {
             Cookies = new HttpCookieCollection();
+        }
+
+        public static BrowsingSession Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    lock (__lock)
+                    {
+                        if (_instance == null)
+                        {
+                            _instance = new BrowsingSession();
+                        }
+                    }
+                }
+                return _instance;
+            }
         }
 
         public RequestResult Get(string url)

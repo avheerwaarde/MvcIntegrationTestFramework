@@ -15,9 +15,20 @@ namespace MvcIntegrationTestFramework.Hosting
 
         public void RunBrowsingSessionInAppDomain(SerializableDelegate<Action<BrowsingSession>> script)
         {
-            var browsingSession = new BrowsingSession();
+            var browsingSession = BrowsingSession.Instance;
             script.Delegate(browsingSession);
         }
+
+        public FuncExecutionResult<TResult> RunBrowsingSessionInAppDomain<TResult>(SerializableDelegate<Func<BrowsingSession, TResult>> script)
+        {
+            //            var browsingSession = new BrowsingSession();
+            var browsingSession = BrowsingSession.Instance;
+            var local = script.Delegate(browsingSession);
+            FuncExecutionResult<TResult> result = new FuncExecutionResult<TResult>();
+            result.DelegateCalled = script;
+            result.DelegateCallResult = local;
+            return result;
+        } 
 
         public override object InitializeLifetimeService()
         {
