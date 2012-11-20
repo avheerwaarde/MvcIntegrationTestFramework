@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Web.Mvc;
-
 namespace MvcIntegrationTestFramework.Interception
 {
     internal class InterceptionFilterProvider : IFilterProvider
@@ -8,6 +8,7 @@ namespace MvcIntegrationTestFramework.Interception
         public IEnumerable<Filter> GetFilters(ControllerContext controllerContext, ActionDescriptor actionDescriptor)
         {
             yield return new Filter(new InterceptionFilter(), FilterScope.Action, null);
+            yield break;
         }
     }
 }

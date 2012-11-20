@@ -1,150 +1,138 @@
-﻿using System;
+﻿using MvcIntegrationTestFramework.Browsing;
+using MvcIntegrationTestFramework.Interception;
+using System;
 using System.IO;
 using System.Reflection;
 using System.Web;
 using System.Web.Hosting;
 using System.Web.Mvc;
-using MvcIntegrationTestFramework.Browsing;
-using MvcIntegrationTestFramework.Interception;
-
 namespace MvcIntegrationTestFramework.Hosting
 {
-    /// <summary>
-    /// Hosts an ASP.NET application within an ASP.NET-enabled .NET appdomain
-    /// and provides methods for executing test code within that appdomain
-    /// </summary>
     public class AppHost
     {
-        private readonly AppDomainProxy _appDomainProxy; // The gateway to the ASP.NET-enabled .NET appdomain
-
+        private readonly AppDomainProxy _appDomainProxy;
+        private static readonly MethodInfo getApplicationInstanceMethod;
+        private static readonly MethodInfo recycleApplicationInstanceMethod;
         private AppHost(string appPhysicalDirectory, string virtualDirectory = "/")
         {
-            _appDomainProxy = (AppDomainProxy)ApplicationHost.CreateApplicationHost(typeof(AppDomainProxy), virtualDirectory, appPhysicalDirectory);
-            _appDomainProxy.RunCodeInAppDomain(() =>
+            this._appDomainProxy = (AppDomainProxy)ApplicationHost.CreateApplicationHost(typeof(AppDomainProxy), virtualDirectory, appPhysicalDirectory);
+            this._appDomainProxy.RunCodeInAppDomain(delegate
             {
-                InitializeApplication();
+                AppHost.InitializeApplication();
                 FilterProviders.Providers.Add(new InterceptionFilterProvider());
                 LastRequestData.Reset();
-            });
+            }
+            );
         }
-
         public void Start(Action<BrowsingSession> testScript)
         {
-            var serializableDelegate = new SerializableDelegate<Action<BrowsingSession>>(testScript);
-            _appDomainProxy.RunBrowsingSessionInAppDomain(serializableDelegate);
+            SerializableDelegate<Action<BrowsingSession>> script = new SerializableDelegate<Action<BrowsingSession>>(testScript);
+            this._appDomainProxy.RunBrowsingSessionInAppDomain(script);
         }
-
         public TResult Start<TResult>(Func<BrowsingSession, TResult> testScript)
         {
-            var serializableDelegate = new SerializableDelegate<Func<BrowsingSession, TResult>>(testScript);
-            FuncExecutionResult<TResult> result = _appDomainProxy.RunBrowsingSessionInAppDomain(serializableDelegate);
-            CopyFields<object>(result.DelegateCalled.Delegate.Target, testScript.Target);
-            return result.DelegateCallResult;
+            SerializableDelegate<Func<BrowsingSession, TResult>> script = new SerializableDelegate<Func<BrowsingSession, TResult>>(testScript);
+            FuncExecutionResult<TResult> funcExecutionResult = this._appDomainProxy.RunBrowsingSessionInAppDomain<TResult>(script);
+            AppHost.CopyFields<object>(funcExecutionResult.DelegateCalled.Delegate.Target, testScript.Target);
+            return funcExecutionResult.DelegateCallResult;
         }
-
         private static void CopyFields<T>(T from, T to) where T : class
         {
-            if ((from != null) && (to != null))
+            if (from != null && to != null)
             {
-                foreach (FieldInfo info in from.GetType().GetFields())
+                FieldInfo[] fields = from.GetType().GetFields();
+                for (int i = 0; i < fields.Length; i++)
                 {
-                    info.SetValue(to, info.GetValue(from));
+                    FieldInfo fieldInfo = fields[i];
+                    fieldInfo.SetValue(to, fieldInfo.GetValue(from));
                 }
             }
         }
-
-        #region Initializing app & interceptors
         private static void InitializeApplication()
         {
-            var appInstance = GetApplicationInstance();
-            appInstance.PostRequestHandlerExecute += delegate
+            HttpApplication applicationInstance = AppHost.GetApplicationInstance();
+            applicationInstance.PostRequestHandlerExecute += delegate(object param0, EventArgs param1)
             {
-                // Collect references to context objects that would otherwise be lost
-                // when the request is completed
                 if (LastRequestData.HttpSessionState == null)
+                {
                     LastRequestData.HttpSessionState = HttpContext.Current.Session;
+                }
                 if (LastRequestData.Response == null)
+                {
                     LastRequestData.Response = HttpContext.Current.Response;
-            };
-            RefreshEventsList(appInstance);
-
-            RecycleApplicationInstance(appInstance);
+                }
+            }
+            ;
+            AppHost.RefreshEventsList(applicationInstance);
+            AppHost.RecycleApplicationInstance(applicationInstance);
         }
-        #endregion
-
-        #region Reflection hacks
-        private static readonly MethodInfo getApplicationInstanceMethod;
-        private static readonly MethodInfo recycleApplicationInstanceMethod;
-
         static AppHost()
         {
-            // Get references to some MethodInfos we'll need to use later to bypass nonpublic access restrictions
-            var httpApplicationFactory = typeof(HttpContext).Assembly.GetType("System.Web.HttpApplicationFactory", true);
-            getApplicationInstanceMethod = httpApplicationFactory.GetMethod("GetApplicationInstance", BindingFlags.Static | BindingFlags.NonPublic);
-            recycleApplicationInstanceMethod = httpApplicationFactory.GetMethod("RecycleApplicationInstance", BindingFlags.Static | BindingFlags.NonPublic);
+            Type type = typeof(HttpContext).Assembly.GetType("System.Web.HttpApplicationFactory", true);
+            AppHost.getApplicationInstanceMethod = type.GetMethod("GetApplicationInstance", BindingFlags.Static | BindingFlags.NonPublic);
+            AppHost.recycleApplicationInstanceMethod = type.GetMethod("RecycleApplicationInstance", BindingFlags.Static | BindingFlags.NonPublic);
         }
-
         private static HttpApplication GetApplicationInstance()
         {
-            var writer = new StringWriter();
-            var workerRequest = new SimpleWorkerRequest("", "", writer);
-            var httpContext = new HttpContext(workerRequest);
-            return (HttpApplication)getApplicationInstanceMethod.Invoke(null, new object[] { httpContext });
+            StringWriter output = new StringWriter();
+            SimpleWorkerRequest wr = new SimpleWorkerRequest("", "", output);
+            HttpContext httpContext = new HttpContext(wr);
+            return (HttpApplication)AppHost.getApplicationInstanceMethod.Invoke(null, new object[]
+			{
+				httpContext
+			});
         }
-
         private static void RecycleApplicationInstance(HttpApplication appInstance)
         {
-            recycleApplicationInstanceMethod.Invoke(null, new object[] { appInstance });
+            AppHost.recycleApplicationInstanceMethod.Invoke(null, new object[]
+			{
+				appInstance
+			});
         }
-
         private static void RefreshEventsList(HttpApplication appInstance)
         {
-            object stepManager = typeof(HttpApplication).GetField("_stepManager", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(appInstance);
-            object resumeStepsWaitCallback = typeof(HttpApplication).GetField("_resumeStepsWaitCallback", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(appInstance);
-            var buildStepsMethod = stepManager.GetType().GetMethod("BuildSteps", BindingFlags.NonPublic | BindingFlags.Instance);
-            buildStepsMethod.Invoke(stepManager, new[] { resumeStepsWaitCallback });
+            object value = typeof(HttpApplication).GetField("_stepManager", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(appInstance);
+            object value2 = typeof(HttpApplication).GetField("_resumeStepsWaitCallback", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(appInstance);
+            MethodInfo method = value.GetType().GetMethod("BuildSteps", BindingFlags.Instance | BindingFlags.NonPublic);
+            method.Invoke(value, new object[]
+			{
+				value2
+			});
         }
-
-        #endregion
-
-        /// <summary>
-        /// Creates an instance of the AppHost so it can be used to simulate a browsing session.
-        /// </summary>
-        /// <returns></returns>
         public static AppHost Simulate(string mvcProjectDirectory)
         {
-            var mvcProjectPath = GetMvcProjectPath(mvcProjectDirectory);
+            string mvcProjectPath = AppHost.GetMvcProjectPath(mvcProjectDirectory);
             if (mvcProjectPath == null)
             {
                 throw new ArgumentException(string.Format("Mvc Project {0} not found", mvcProjectDirectory));
             }
-            CopyDllFiles(mvcProjectPath);
-            return new AppHost(mvcProjectPath);
+            AppHost.CopyDllFiles(mvcProjectPath);
+            return new AppHost(mvcProjectPath, "/");
         }
-
         private static void CopyDllFiles(string mvcProjectPath)
         {
-            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            foreach (var file in Directory.GetFiles(baseDirectory, "*.dll"))
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string[] files = Directory.GetFiles(baseDirectory, "*.dll");
+            for (int i = 0; i < files.Length; i++)
             {
-                var destFile = Path.Combine(mvcProjectPath, "bin", Path.GetFileName(file));
-                if (!File.Exists(destFile) || File.GetCreationTimeUtc(destFile) != File.GetCreationTimeUtc(file))
+                string text = files[i];
+                string text2 = Path.Combine(mvcProjectPath, "bin", Path.GetFileName(text));
+                if (!File.Exists(text2) || File.GetCreationTimeUtc(text2) != File.GetCreationTimeUtc(text))
                 {
-                    File.Copy(file, destFile, true);
+                    File.Copy(text, text2, true);
                 }
             }
         }
-
         private static string GetMvcProjectPath(string mvcProjectName)
         {
-            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            while (baseDirectory.Contains("\\"))
+            string text = AppDomain.CurrentDomain.BaseDirectory;
+            while (text.Contains("\\"))
             {
-                baseDirectory = baseDirectory.Substring(0, baseDirectory.LastIndexOf("\\"));
-                var mvcPath = Path.Combine(baseDirectory, mvcProjectName);
-                if (Directory.Exists(mvcPath))
+                text = text.Substring(0, text.LastIndexOf("\\"));
+                string text2 = Path.Combine(text, mvcProjectName);
+                if (Directory.Exists(text2))
                 {
-                    return mvcPath;
+                    return text2;
                 }
             }
             return null;

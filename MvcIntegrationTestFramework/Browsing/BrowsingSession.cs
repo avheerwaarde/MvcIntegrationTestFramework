@@ -72,28 +72,42 @@ namespace MvcIntegrationTestFramework.Browsing
             return ProcessRequest(url, HttpVerbs.Post, formNameValueCollection);
         }
 
-        private RequestResult ProcessRequest(string url, HttpVerbs httpVerb = HttpVerbs.Get, NameValueCollection formValues = null)
+        public RequestResult ProcessRequest(string url, HttpVerbs httpVerb = HttpVerbs.Get, NameValueCollection formValues = null)
         {
             return ProcessRequest(url, httpVerb, formValues, null);
         }
 
-        private RequestResult ProcessRequest(string url, HttpVerbs httpVerb, NameValueCollection formValues, NameValueCollection headers)
+        public RequestResult ProcessRequest(string url, HttpVerbs httpVerb, NameValueCollection formValues, NameValueCollection headers)
         {
             if (url == null) throw new ArgumentNullException("url");
+
+            if (httpVerb == HttpVerbs.Post && headers == null)
+            {
+                headers = new NameValueCollection();
+                headers.Add("content-type", "application/x-www-form-urlencoded");
+            }
+            else if (httpVerb == HttpVerbs.Post && headers != null)
+            {
+                if (string.IsNullOrEmpty(headers["content-type"]))
+                {
+                    headers.Add("content-type", "application/x-www-form-urlencoded");
+                }
+            }
 
             // Fix up URLs that incorrectly start with / or ~/
             if (url.StartsWith("~/"))
                 url = url.Substring(2);
-            else if(url.StartsWith("/"))
+            else if (url.StartsWith("/"))
                 url = url.Substring(1);
 
             // Parse out the querystring if provided
             string query = "";
             int querySeparatorIndex = url.IndexOf("?");
-            if (querySeparatorIndex >= 0) {
+            if (querySeparatorIndex >= 0)
+            {
                 query = url.Substring(querySeparatorIndex + 1);
                 url = url.Substring(0, querySeparatorIndex);
-            }                
+            }
 
             // Perform the request
             LastRequestData.Reset();
@@ -116,18 +130,19 @@ namespace MvcIntegrationTestFramework.Browsing
 
         private void AddAnyNewCookiesToCookieCollection()
         {
-            if(LastRequestData.Response == null)
+            if (LastRequestData.Response == null)
                 return;
 
             HttpCookieCollection lastResponseCookies = LastRequestData.Response.Cookies;
-            if(lastResponseCookies == null)
+            if (lastResponseCookies == null)
                 return;
 
-            foreach (string cookieName in lastResponseCookies) {
+            foreach (string cookieName in lastResponseCookies)
+            {
                 HttpCookie cookie = lastResponseCookies[cookieName];
                 if (Cookies[cookieName] != null)
                     Cookies.Remove(cookieName);
-                if((cookie.Expires == default(DateTime)) || (cookie.Expires > DateTime.Now))
+                if ((cookie.Expires == default(DateTime)) || (cookie.Expires > DateTime.Now))
                     Cookies.Add(cookie);
             }
         }
