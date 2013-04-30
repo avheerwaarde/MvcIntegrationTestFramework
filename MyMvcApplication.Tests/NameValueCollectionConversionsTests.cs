@@ -1,81 +1,38 @@
-﻿using Xunit;
-using System.Collections.Specialized;
+﻿using System.Collections.Specialized;
 using MvcIntegrationTestFramework;
+using NUnit.Framework;
 
 namespace MyMvcApplication.Tests
 {
-
-    public class When_converting_an_object_with_one_string_property_to_name_value_collection
+  [ TestFixture ]
+  public class NameValueCollectionConversionsTests
+  {
+    [ Test ]
+    public void WhenConvertingAnObjectWithOneStringPropertyToNameValueCollection( )
     {
-        private NameValueCollection convertedFromObjectWithString;
-        
-        public When_converting_an_object_with_one_string_property_to_name_value_collection()
-        {
-            convertedFromObjectWithString = NameValueCollectionConversions.ConvertFromObject(new {name = "hello"});
-
-        }
-
-        [Fact]
-        public void Should_have_key_of_name_with_value_hello()
-        {            
-          Assert.Equal("hello",convertedFromObjectWithString["name"]);
-        }
+      NameValueCollection convertedFromObjectWithString =
+        NameValueCollectionConversions.ConvertFromObject( new { name = "hello" } );
+      Assert.AreEqual( "hello", convertedFromObjectWithString[ "name" ] );
     }
 
-
-    public class When_converting_an_object_has_2_properties_to_name_value_collection
+    [ Test ]
+    public void WhenConvertingAnObjectHas2PropertiesToNameValueCollection( )
     {
-        private NameValueCollection converted;
-
-        public When_converting_an_object_has_2_properties_to_name_value_collection()
-        {
-            converted = NameValueCollectionConversions.ConvertFromObject(new {name = "hello", age = 30});
-        }
-
-        [Fact]
-        public void Should_have_2_elements_in_collection()
-        {
-            Assert.Equal(2,converted.Count);
-        }
-
-        [Fact]
-        public void Should_have_key_of_name_and_value_of_hello()
-        {
-            Assert.Equal("hello",converted["name"]);
-        }
-
-        [Fact]
-        public void Should_have_key_of_age_and_value_of_30()
-        {
-            Assert.Equal("30",converted["age"]);
-        }
+      NameValueCollection converted = NameValueCollectionConversions.ConvertFromObject( new { name = "hello", age = 30 } );
+      Assert.AreEqual( 2, converted.Count );
+      Assert.AreEqual( "hello", converted[ "name" ] );
+      Assert.AreEqual( "30", converted[ "age" ] );
     }
 
-    public class When_converting_an_object_that_has_a_nested_anonymous_object
+    [ Test ]
+    public void WhenConvertingAnObjectThatHasANestedAnonymousObject( )
     {
-        private NameValueCollection converted;
-       
-        public When_converting_an_object_that_has_a_nested_anonymous_object()
-        {
-            converted = NameValueCollectionConversions.ConvertFromObject(new {Form = new {name = "hello", age = 30}});
-        }
+      NameValueCollection converted =
+        NameValueCollectionConversions.ConvertFromObject( new { Form = new { name = "hello", age = 30 } } );
 
-        [Fact]
-        public void Should_have_2_elements()
-        {
-            Assert.Equal(2,converted.Count);
-        }
-
-        [Fact]
-        public void Should_have_key_of_Formdotname_with_value_hello()
-        {
-            Assert.Equal("hello",converted["Form.name"]);
-        }
-
-        [Fact]
-        public void Should_have_key_of_Formdotage_with_value_30()
-        {
-            Assert.Equal("30",converted["Form.age"]);
-        }
+      Assert.AreEqual( 2, converted.Count );
+      Assert.AreEqual( "hello", converted[ "Form.name" ] );
+      Assert.AreEqual( "30", converted[ "Form.age" ] );
     }
+  }
 }
